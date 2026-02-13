@@ -99,7 +99,7 @@ export default function Account({ session }) {
           }
           disabled={loading}
         />
-      </View>
+      </View> 
 
       <View style={styles.verticallySpaced}>
         <Button title="Sign Out" onPress={() => supabase.auth.signOut()} />
