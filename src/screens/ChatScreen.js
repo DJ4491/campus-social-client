@@ -1,1077 +1,525 @@
-import { useState, useEffect, useRef } from "react";
 
-// ============================================================
-//  🔌 API INTEGRATION LAYER — Replace mock calls with real API
-// ============================================================
-const BASE_URL = "https://your-api.com/api"; // ← CHANGE THIS
-const getAuthToken = () => localStorage.getItem("token") || "your-token-here";
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View, Text, FlatList, TouchableOpacity, TextInput,
+  StyleSheet, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform, SafeAreaView,
+  Animated, RefreshControl, Pressable, StatusBar,
+} from 'react-native';
 
-const api = {
-  headers: () => ({
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${getAuthToken()}`,
-  }),
-
-  // GET /conversations → returns { conversations: [...] }
+// ================================================================
+//  🔌 API — replace mock with your real calls
+// ================================================================
+const API = {
   getConversations: async () => {
-    // REAL: const res = await fetch(`${BASE_URL}/conversations`, { headers: api.headers() });
-    // REAL: return res.json();
-    await new Promise((r) => setTimeout(r, 700));
+    // const res = await fetch('https://your-api.com/conversations', {
+    //   headers: { Authorization: `Bearer ${yourToken}` },
+    // });
+    // return res.json(); // expects { conversations: [...] }
+    await new Promise(r => setTimeout(r, 600));
     return { conversations: MOCK_CONVERSATIONS };
   },
 
-  // GET /conversations/:id/messages → returns { messages: [...] }
   getMessages: async (conversationId) => {
-    // REAL: const res = await fetch(`${BASE_URL}/conversations/${conversationId}/messages`, { headers: api.headers() });
-    // REAL: return res.json();
-    await new Promise((r) => setTimeout(r, 500));
-    return { messages: MOCK_MESSAGES[conversationId] || MOCK_MESSAGES["default"] };
+    // const res = await fetch(`https://your-api.com/conversations/${conversationId}/messages`, {
+    //   headers: { Authorization: `Bearer ${yourToken}` },
+    // });
+    // return res.json(); // expects { messages: [...] }
+    await new Promise(r => setTimeout(r, 400));
+    return { messages: MOCK_MESSAGES[conversationId] ?? MOCK_MESSAGES.default };
   },
 
-  // POST /conversations/:id/messages → returns { message: {...} }
   sendMessage: async (conversationId, text) => {
-    // REAL: const res = await fetch(`${BASE_URL}/conversations/${conversationId}/messages`, {
-    // REAL:   method: "POST", headers: api.headers(), body: JSON.stringify({ text }),
-    // REAL: });
-    // REAL: return res.json();
-    await new Promise((r) => setTimeout(r, 350));
-    return {
-      message: {
-        id: `m-${Date.now()}`,
-        text,
-        senderId: "me",
-        timestamp: new Date().toISOString(),
-        status: "delivered",
-      },
-    };
+    // const res = await fetch(`https://your-api.com/conversations/${conversationId}/messages`, {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${yourToken}` },
+    //   body: JSON.stringify({ text }),
+    // });
+    // return res.json(); // expects { message: { id, text, senderId, timestamp, status } }
+    await new Promise(r => setTimeout(r, 300));
+    return { message: { id: `m-${Date.now()}`, text, senderId: 'me', timestamp: new Date().toISOString(), status: 'delivered' } };
   },
 };
 
-// ============================================================
+// ================================================================
 //  MOCK DATA
-// ============================================================
+// ================================================================
 const MOCK_CONVERSATIONS = [
-  { id: "c1", user: { id: "u1", name: "Sarah Johnson", isOnline: true }, lastMessage: { text: "See you tomorrow! 👋", timestamp: new Date(Date.now() - 2 * 60000).toISOString(), isRead: false }, unreadCount: 3 },
-  { id: "c2", user: { id: "u2", name: "Alex Chen", isOnline: true }, lastMessage: { text: "The design looks incredible 🔥", timestamp: new Date(Date.now() - 18 * 60000).toISOString(), isRead: true }, unreadCount: 0 },
-  { id: "c3", user: { id: "u3", name: "Priya Sharma", isOnline: false }, lastMessage: { text: "Can you send me those files?", timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), isRead: false }, unreadCount: 7 },
-  { id: "c4", user: { id: "u4", name: "Marcus Williams", isOnline: false }, lastMessage: { text: "Meeting at 3pm confirmed ✓", timestamp: new Date(Date.now() - 5 * 3600000).toISOString(), isRead: true }, unreadCount: 0 },
-  { id: "c5", user: { id: "u5", name: "Elena Rodriguez", isOnline: true }, lastMessage: { text: "haha yes exactly 😂", timestamp: new Date(Date.now() - 24 * 3600000).toISOString(), isRead: true }, unreadCount: 0 },
-  { id: "c6", user: { id: "u6", name: "James Park", isOnline: false }, lastMessage: { text: "Let's sync up Monday morning", timestamp: new Date(Date.now() - 2 * 24 * 3600000).toISOString(), isRead: true }, unreadCount: 0 },
-  { id: "c7", user: { id: "u7", name: "Aisha Patel", isOnline: true }, lastMessage: { text: "Just shipped the feature 🚀", timestamp: new Date(Date.now() - 3 * 24 * 3600000).toISOString(), isRead: true }, unreadCount: 0 },
+  { id: 'c1', user: { id: 'u1', name: 'Sarah Johnson',  isOnline: true  }, lastMessage: { text: 'See you tomorrow! 👋',         timestamp: new Date(Date.now() - 2 * 60000).toISOString(),         isRead: false }, unreadCount: 3 },
+  { id: 'c2', user: { id: 'u2', name: 'Alex Chen',       isOnline: true  }, lastMessage: { text: 'The design looks incredible 🔥', timestamp: new Date(Date.now() - 18 * 60000).toISOString(),        isRead: true  }, unreadCount: 0 },
+  { id: 'c3', user: { id: 'u3', name: 'Priya Sharma',    isOnline: false }, lastMessage: { text: 'Can you send me those files?',   timestamp: new Date(Date.now() - 2 * 3600000).toISOString(),       isRead: false }, unreadCount: 7 },
+  { id: 'c4', user: { id: 'u4', name: 'Marcus Williams', isOnline: false }, lastMessage: { text: 'Meeting at 3pm confirmed ✓',     timestamp: new Date(Date.now() - 5 * 3600000).toISOString(),       isRead: true  }, unreadCount: 0 },
+  { id: 'c5', user: { id: 'u5', name: 'Elena Rodriguez', isOnline: true  }, lastMessage: { text: 'haha yes exactly 😂',           timestamp: new Date(Date.now() - 24 * 3600000).toISOString(),      isRead: true  }, unreadCount: 0 },
+  { id: 'c6', user: { id: 'u6', name: 'James Park',      isOnline: false }, lastMessage: { text: "Let's sync up Monday morning",  timestamp: new Date(Date.now() - 2 * 24 * 3600000).toISOString(), isRead: true  }, unreadCount: 0 },
+  { id: 'c7', user: { id: 'u7', name: 'Aisha Patel',     isOnline: true  }, lastMessage: { text: 'Just shipped the feature 🚀',   timestamp: new Date(Date.now() - 3 * 24 * 3600000).toISOString(), isRead: true  }, unreadCount: 0 },
 ];
 
 const MOCK_MESSAGES = {
   c1: [
-    { id: "m1", text: "Hey! How are you doing?", senderId: "u1", timestamp: new Date(Date.now() - 3600000).toISOString() },
-    { id: "m2", text: "I'm great! Just wrapped up the new chat UI 🎉", senderId: "me", timestamp: new Date(Date.now() - 3500000).toISOString(), status: "read" },
-    { id: "m3", text: "No way, that's the project you were talking about?", senderId: "u1", timestamp: new Date(Date.now() - 3400000).toISOString() },
-    { id: "m4", text: "Yes! It has a clean mobile-first design, really happy with how it turned out", senderId: "me", timestamp: new Date(Date.now() - 3300000).toISOString(), status: "read" },
-    { id: "m5", text: "Send me a screenshot! I'd love to see it 👀", senderId: "u1", timestamp: new Date(Date.now() - 3200000).toISOString() },
-    { id: "m6", text: "Will do! Deploying it now", senderId: "me", timestamp: new Date(Date.now() - 10 * 60000).toISOString(), status: "delivered" },
-    { id: "m7", text: "See you tomorrow! 👋", senderId: "u1", timestamp: new Date(Date.now() - 2 * 60000).toISOString() },
+    { id: 'm1', text: 'Hey! How are you doing?',                                  senderId: 'u1', timestamp: new Date(Date.now() - 3600000).toISOString() },
+    { id: 'm2', text: "I'm great! Just wrapped up the new chat UI 🎉",            senderId: 'me', timestamp: new Date(Date.now() - 3500000).toISOString(), status: 'read' },
+    { id: 'm3', text: "No way, that's the project you were talking about?",        senderId: 'u1', timestamp: new Date(Date.now() - 3400000).toISOString() },
+    { id: 'm4', text: 'Yes! Clean mobile-first design, really happy with it 🙌', senderId: 'me', timestamp: new Date(Date.now() - 3300000).toISOString(), status: 'read' },
+    { id: 'm5', text: "Send me a screenshot! I'd love to see it 👀",             senderId: 'u1', timestamp: new Date(Date.now() - 3200000).toISOString() },
+    { id: 'm6', text: 'Will do! Deploying it now',                                senderId: 'me', timestamp: new Date(Date.now() - 10 * 60000).toISOString(), status: 'delivered' },
+    { id: 'm7', text: 'See you tomorrow! 👋',                                     senderId: 'u1', timestamp: new Date(Date.now() - 2 * 60000).toISOString() },
   ],
   default: [
-    { id: "d1", text: "Hey there! 👋", senderId: "other", timestamp: new Date(Date.now() - 3600000).toISOString() },
-    { id: "d2", text: "Hi! Great to connect 😊", senderId: "me", timestamp: new Date(Date.now() - 3500000).toISOString(), status: "read" },
-    { id: "d3", text: "How's everything going?", senderId: "other", timestamp: new Date(Date.now() - 3400000).toISOString() },
+    { id: 'd1', text: 'Hey there! 👋',           senderId: 'other', timestamp: new Date(Date.now() - 3600000).toISOString() },
+    { id: 'd2', text: 'Hi! Great to connect 😊', senderId: 'me',    timestamp: new Date(Date.now() - 3500000).toISOString(), status: 'read' },
+    { id: 'd3', text: "How's everything going?", senderId: 'other', timestamp: new Date(Date.now() - 3400000).toISOString() },
   ],
 };
 
-// ============================================================
+// ================================================================
 //  HELPERS
-// ============================================================
-const formatTime = (iso) => {
-  const date = new Date(iso);
-  const now = new Date();
-  const diff = now - date;
-  const mins = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  if (hours < 24) return `${hours}h`;
-  if (days === 1) return "Yesterday";
-  return date.toLocaleDateString("en", { month: "short", day: "numeric" });
-};
-
-const formatChatTime = (iso) =>
-  new Date(iso).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", hour12: true });
-
-const getInitials = (name) =>
-  name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
-
-const AVATAR_PALETTE = [
-  { bg: "#FF6B6B", fg: "#fff" }, { bg: "#4ECDC4", fg: "#fff" },
-  { bg: "#45B7D1", fg: "#fff" }, { bg: "#A29BFE", fg: "#fff" },
-  { bg: "#FDCB6E", fg: "#2d2d2d" }, { bg: "#E17055", fg: "#fff" },
-  { bg: "#00B894", fg: "#fff" }, { bg: "#6C5CE7", fg: "#fff" },
+// ================================================================
+const PALETTE = [
+  { bg: '#FF6B6B', fg: '#fff' }, { bg: '#4ECDC4', fg: '#fff' },
+  { bg: '#45B7D1', fg: '#fff' }, { bg: '#A29BFE', fg: '#fff' },
+  { bg: '#FDCB6E', fg: '#2d2d2d' }, { bg: '#E17055', fg: '#fff' },
+  { bg: '#00B894', fg: '#fff' }, { bg: '#6C5CE7', fg: '#fff' },
 ];
+const getAv       = (name) => PALETTE[name.charCodeAt(0) % PALETTE.length];
+const getInitials = (name) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
-const getAv = (name) => AVATAR_PALETTE[name.charCodeAt(0) % AVATAR_PALETTE.length];
+const timeAgo = (iso) => {
+  const diff = Date.now() - new Date(iso);
+  const m = Math.floor(diff / 60000), h = Math.floor(diff / 3600000), d = Math.floor(diff / 86400000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  if (h < 24) return `${h}h`;
+  if (d === 1) return 'Yesterday';
+  return new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric' });
+};
+const chatTime = (iso) =>
+  new Date(iso).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-// ============================================================
-//  ROOT APP
-// ============================================================
-export default function ChatScreen() {
-  const [screen, setScreen] = useState("list");
-  const [activeConv, setActiveConv] = useState(null);
-
-  const openChat = (conv) => { setActiveConv(conv); setScreen("room"); };
-  const goBack = () => { setScreen("list"); setActiveConv(null); };
-
+// ================================================================
+//  TYPING DOTS
+// ================================================================
+function TypingIndicator() {
+  const dots = [useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current];
+  useEffect(() => {
+    const anims = dots.map((d, i) =>
+      Animated.loop(Animated.sequence([
+        Animated.delay(i * 200),
+        Animated.timing(d, { toValue: -6, duration: 280, useNativeDriver: true }),
+        Animated.timing(d, { toValue: 0,  duration: 280, useNativeDriver: true }),
+        Animated.delay(560),
+      ]))
+    );
+    anims.forEach(a => a.start());
+    return () => anims.forEach(a => a.stop());
+  }, []);
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Lato:wght@300;400;700&display=swap');
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body {
-          background: #111217;
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Lato', sans-serif;
-          background-image:
-            radial-gradient(ellipse 70% 60% at 15% 0%, rgba(99,179,237,0.12) 0%, transparent 55%),
-            radial-gradient(ellipse 50% 50% at 85% 100%, rgba(154,230,180,0.1) 0%, transparent 55%);
-        }
-
-        ::-webkit-scrollbar { width: 0; }
-
-        @keyframes slideRight {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-        @keyframes slideLeft {
-          from { transform: translateX(-100%); }
-          to { transform: translateX(0); }
-        }
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(14px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes pop {
-          from { opacity: 0; transform: scale(0.88) translateY(6px); }
-          to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-        @keyframes bounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-6px); }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        .phone {
-          width: 393px;
-          height: 852px;
-          border-radius: 52px;
-          overflow: hidden;
-          position: relative;
-          background: #f0f2f5;
-          box-shadow:
-            0 0 0 1.5px rgba(255,255,255,0.1),
-            0 50px 100px rgba(0,0,0,0.7),
-            inset 0 0 0 1px rgba(255,255,255,0.07);
-          display: flex;
-          flex-direction: column;
-        }
-
-        /* Notch */
-        .notch {
-          position: absolute;
-          top: 0;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 126px;
-          height: 37px;
-          background: #111217;
-          border-radius: 0 0 20px 20px;
-          z-index: 100;
-        }
-
-        /* Status bar */
-        .status-bar {
-          height: 54px;
-          background: #fff;
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
-          padding: 0 30px 10px;
-          position: relative;
-          flex-shrink: 0;
-          z-index: 10;
-        }
-        .status-bar.dark { background: #1c1f2e; }
-        .status-time {
-          font-family: 'Nunito', sans-serif;
-          font-size: 15px;
-          font-weight: 800;
-          color: #1a202c;
-        }
-        .status-icons { display: flex; gap: 5px; align-items: center; font-size: 13px; color: #1a202c; }
-
-        .screen-body {
-          flex: 1;
-          overflow: hidden;
-          position: relative;
-          display: flex;
-          flex-direction: column;
-        }
-
-        /* ══════════════════════════════
-           CHAT LIST
-        ══════════════════════════════ */
-        .list-screen {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          background: #f0f2f5;
-          animation: slideLeft 0.3s cubic-bezier(0.25, 1, 0.5, 1);
-        }
-
-        .list-header {
-          background: #fff;
-          padding: 16px 22px 0;
-          flex-shrink: 0;
-        }
-
-        .list-toprow {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 14px;
-        }
-
-        .list-title {
-          font-family: 'Nunito', sans-serif;
-          font-size: 28px;
-          font-weight: 800;
-          color: #1a202c;
-          letter-spacing: -0.5px;
-        }
-
-        .compose-btn {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: #4299e1;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 17px;
-          box-shadow: 0 4px 14px rgba(66,153,225,0.4);
-          transition: transform 0.18s, box-shadow 0.18s;
-        }
-        .compose-btn:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(66,153,225,0.5); }
-
-        .search-box {
-          display: flex;
-          align-items: center;
-          background: #f0f2f5;
-          border-radius: 14px;
-          padding: 10px 14px;
-          gap: 9px;
-          margin-bottom: 14px;
-          transition: background 0.2s;
-        }
-        .search-box:focus-within { background: #e8f0fe; }
-        .search-icon-lbl { font-size: 15px; }
-        .search-input {
-          flex: 1;
-          border: none;
-          background: transparent;
-          font-family: 'Lato', sans-serif;
-          font-size: 15px;
-          color: #1a202c;
-          outline: none;
-        }
-        .search-input::placeholder { color: #a0aec0; }
-        .clear-btn {
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: #a0aec0;
-          font-size: 13px;
-        }
-
-        /* Online users */
-        .online-row {
-          display: flex;
-          gap: 16px;
-          padding: 12px 0 12px 22px;
-          overflow-x: auto;
-          background: #fff;
-          border-bottom: 1px solid #edf2f7;
-          flex-shrink: 0;
-        }
-
-        .ou-wrap {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 5px;
-          cursor: pointer;
-          min-width: 54px;
-          flex-shrink: 0;
-          transition: transform 0.15s;
-        }
-        .ou-wrap:hover { transform: scale(1.07); }
-        .ou-rel { position: relative; }
-        .ou-avatar {
-          width: 52px;
-          height: 52px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Nunito', sans-serif;
-          font-size: 15px;
-          font-weight: 800;
-          border: 3px solid #fff;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.12);
-        }
-        .ou-dot {
-          position: absolute;
-          bottom: 1px;
-          right: 1px;
-          width: 13px;
-          height: 13px;
-          background: #48bb78;
-          border-radius: 50%;
-          border: 2.5px solid #fff;
-        }
-        .ou-name {
-          font-size: 11px;
-          color: #718096;
-          font-weight: 600;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 54px;
-          text-align: center;
-        }
-
-        /* Conversation list */
-        .convs-scroll {
-          flex: 1;
-          overflow-y: auto;
-          padding: 8px 0;
-        }
-
-        .section-tag {
-          padding: 12px 22px 6px;
-          font-family: 'Nunito', sans-serif;
-          font-size: 11px;
-          font-weight: 700;
-          color: #a0aec0;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-        }
-
-        .conv-card {
-          display: flex;
-          align-items: center;
-          padding: 12px 18px;
-          gap: 12px;
-          cursor: pointer;
-          margin: 0 10px 5px;
-          border-radius: 20px;
-          background: #fff;
-          transition: all 0.18s;
-          animation: fadeUp 0.32s ease both;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-        }
-        .conv-card:hover { transform: translateY(-1px); box-shadow: 0 5px 18px rgba(0,0,0,0.1); }
-        .conv-card:active { transform: scale(0.985); }
-
-        .ca-wrap { position: relative; flex-shrink: 0; }
-        .ca {
-          width: 54px;
-          height: 54px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Nunito', sans-serif;
-          font-size: 17px;
-          font-weight: 800;
-        }
-        .ca-dot {
-          position: absolute;
-          bottom: 1px;
-          right: 1px;
-          width: 14px;
-          height: 14px;
-          background: #48bb78;
-          border-radius: 50%;
-          border: 2.5px solid #fff;
-        }
-
-        .cc { flex: 1; min-width: 0; }
-        .cc-row1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
-        .cc-name {
-          font-family: 'Nunito', sans-serif;
-          font-size: 15.5px;
-          font-weight: 600;
-          color: #1a202c;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .cc-name.bold { font-weight: 800; }
-        .cc-time { font-size: 12px; color: #a0aec0; flex-shrink: 0; }
-        .cc-time.accent { color: #4299e1; font-weight: 700; }
-
-        .cc-row2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-        .cc-msg { font-size: 13.5px; color: #a0aec0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
-        .cc-msg.bold { color: #2d3748; font-weight: 600; }
-
-        .badge {
-          background: #4299e1;
-          color: #fff;
-          font-family: 'Nunito', sans-serif;
-          font-size: 11px;
-          font-weight: 800;
-          min-width: 20px;
-          height: 20px;
-          border-radius: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0 5px;
-          flex-shrink: 0;
-        }
-
-        /* Empty */
-        .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 56px 24px;
-          gap: 10px;
-        }
-        .empty-icon { font-size: 48px; }
-        .empty-title { font-family: 'Nunito', sans-serif; font-size: 17px; font-weight: 700; color: #4a5568; }
-        .empty-sub { font-size: 13px; color: #a0aec0; text-align: center; }
-
-        /* Spinner */
-        .spinner {
-          width: 32px; height: 32px;
-          border: 3px solid #e2e8f0;
-          border-top-color: #4299e1;
-          border-radius: 50%;
-          animation: spin 0.7s linear infinite;
-          margin: 60px auto;
-        }
-
-        /* ══════════════════════════════
-           CHAT ROOM
-        ══════════════════════════════ */
-        .room-screen {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          background: #edf2f7;
-          animation: slideRight 0.3s cubic-bezier(0.25, 1, 0.5, 1);
-        }
-
-        .room-header {
-          background: #fff;
-          padding: 12px 16px;
-          display: flex;
-          align-items: center;
-          gap: 11px;
-          flex-shrink: 0;
-          box-shadow: 0 1px 8px rgba(0,0,0,0.07);
-        }
-
-        .back-btn {
-          width: 38px;
-          height: 38px;
-          border-radius: 50%;
-          background: #edf2f7;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 22px;
-          color: #4299e1;
-          flex-shrink: 0;
-          transition: background 0.15s, transform 0.15s;
-        }
-        .back-btn:hover { background: #bee3f8; transform: scale(1.08); }
-
-        .rh-info { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; }
-        .rh-avatar {
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Nunito', sans-serif;
-          font-size: 15px;
-          font-weight: 800;
-          position: relative;
-          flex-shrink: 0;
-        }
-        .rh-online-dot {
-          position: absolute;
-          bottom: 0;
-          right: 0;
-          width: 12px;
-          height: 12px;
-          background: #48bb78;
-          border-radius: 50%;
-          border: 2px solid #fff;
-        }
-        .rh-text { min-width: 0; }
-        .rh-name {
-          font-family: 'Nunito', sans-serif;
-          font-size: 16px;
-          font-weight: 800;
-          color: #1a202c;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .rh-status { font-size: 12px; color: #a0aec0; margin-top: 1px; }
-        .rh-status.online { color: #48bb78; font-weight: 600; }
-
-        .rh-actions { display: flex; gap: 6px; }
-        .rh-btn {
-          width: 38px;
-          height: 38px;
-          border-radius: 50%;
-          background: #edf2f7;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 17px;
-          transition: background 0.15s, transform 0.15s;
-        }
-        .rh-btn:hover { background: #bee3f8; transform: scale(1.08); }
-
-        /* Messages area */
-        .msgs-area {
-          flex: 1;
-          overflow-y: auto;
-          padding: 14px 12px;
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-        }
-
-        .date-div {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin: 8px 0 12px;
-        }
-        .date-line { flex: 1; height: 1px; background: #cbd5e0; }
-        .date-lbl {
-          font-family: 'Nunito', sans-serif;
-          font-size: 11px;
-          font-weight: 700;
-          color: #718096;
-          letter-spacing: 0.4px;
-        }
-
-        .msg-row {
-          display: flex;
-          align-items: flex-end;
-          gap: 7px;
-          animation: pop 0.25s cubic-bezier(0.34, 1.3, 0.64, 1) both;
-        }
-        .msg-row.mine { flex-direction: row-reverse; }
-
-        .m-avatar {
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Nunito', sans-serif;
-          font-size: 10px;
-          font-weight: 800;
-          flex-shrink: 0;
-        }
-        .m-avatar-ghost { width: 28px; flex-shrink: 0; }
-
-        .bubble {
-          max-width: 73%;
-          padding: 10px 14px;
-          border-radius: 20px;
-          word-break: break-word;
-        }
-        .bubble.mine {
-          background: #4299e1;
-          border-bottom-right-radius: 5px;
-          box-shadow: 0 3px 12px rgba(66,153,225,0.35);
-        }
-        .bubble.theirs {
-          background: #fff;
-          border-bottom-left-radius: 5px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-
-        .b-text { font-size: 14.5px; line-height: 1.45; }
-        .b-text.mine { color: #fff; }
-        .b-text.theirs { color: #1a202c; }
-
-        .b-meta {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          margin-top: 4px;
-          justify-content: flex-end;
-        }
-        .b-time { font-size: 10.5px; }
-        .b-time.mine { color: rgba(255,255,255,0.65); }
-        .b-time.theirs { color: #a0aec0; }
-        .b-status { font-size: 11px; color: rgba(255,255,255,0.7); }
-
-        /* Typing */
-        .typing-row {
-          display: flex;
-          align-items: flex-end;
-          gap: 7px;
-          margin: 4px 0;
-        }
-        .typing-bubble {
-          background: #fff;
-          border-radius: 20px;
-          border-bottom-left-radius: 5px;
-          padding: 12px 16px;
-          display: flex;
-          gap: 5px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        .td {
-          width: 7px;
-          height: 7px;
-          background: #cbd5e0;
-          border-radius: 50%;
-          animation: bounce 1.2s ease infinite;
-        }
-        .td:nth-child(2) { animation-delay: 0.2s; }
-        .td:nth-child(3) { animation-delay: 0.4s; }
-
-        /* Input */
-        .input-bar {
-          background: #fff;
-          padding: 10px 14px 16px;
-          border-top: 1px solid #edf2f7;
-          display: flex;
-          align-items: flex-end;
-          gap: 9px;
-          flex-shrink: 0;
-        }
-
-        .attach-btn {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: #edf2f7;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-          flex-shrink: 0;
-          transition: background 0.15s;
-        }
-        .attach-btn:hover { background: #bee3f8; }
-
-        .input-wrap {
-          flex: 1;
-          background: #edf2f7;
-          border-radius: 22px;
-          padding: 10px 14px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          transition: background 0.2s;
-        }
-        .input-wrap:focus-within { background: #e6f0fc; }
-
-        .msg-input {
-          flex: 1;
-          border: none;
-          background: transparent;
-          font-family: 'Lato', sans-serif;
-          font-size: 15px;
-          color: #1a202c;
-          outline: none;
-          resize: none;
-          max-height: 80px;
-          line-height: 1.4;
-        }
-        .msg-input::placeholder { color: #a0aec0; }
-
-        .emoji-btn {
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 19px;
-          opacity: 0.7;
-          transition: opacity 0.15s;
-          flex-shrink: 0;
-        }
-        .emoji-btn:hover { opacity: 1; }
-
-        .send-btn {
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          background: #4299e1;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-          flex-shrink: 0;
-          box-shadow: 0 4px 14px rgba(66,153,225,0.4);
-          transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
-          color: #fff;
-        }
-        .send-btn:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(66,153,225,0.5); }
-        .send-btn:disabled { opacity: 0.45; transform: none; cursor: not-allowed; }
-
-        /* Responsive — fill full screen on mobile */
-        @media (max-width: 480px) {
-          body { align-items: flex-start; background: #fff; }
-          .phone {
-            width: 100vw;
-            height: 100dvh;
-            border-radius: 0;
-            box-shadow: none;
-          }
-          .notch { display: none; }
-          .status-bar { height: 44px; }
-          .screen-body { height: calc(100dvh - 44px); }
-        }
-      `}</style>
-
-      <div className="phone">
-        <div className="notch" />
-
-        {/* Status Bar */}
-        <div className="status-bar">
-          <span className="status-time">9:41</span>
-          <div className="status-icons">
-            <span>●●●</span>
-            <span>WiFi</span>
-            <span>🔋</span>
-          </div>
-        </div>
-
-        <div className="screen-body">
-          {screen === "list" ? (
-            <ChatList onOpen={openChat} />
-          ) : (
-            <ChatRoom conv={activeConv} onBack={goBack} />
-          )}
-        </div>
-      </div>
-    </>
+    <View style={s.typingRow}>
+      <View style={s.typingBubble}>
+        {dots.map((d, i) => <Animated.View key={i} style={[s.typingDot, { transform: [{ translateY: d }] }]} />)}
+      </View>
+    </View>
   );
 }
 
-// ============================================================
-//  CHAT LIST
-// ============================================================
-function ChatList({ onOpen }) {
-  const [convs, setConvs] = useState([]);
-  const [filtered, setFiltered] = useState([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+// ================================================================
+//  MAIN COMPONENT
+// ================================================================
+export default function ChatScreen() {
+  const [activeConv, setActiveConv] = useState(null); // null = show list
 
-  useEffect(() => {
-    api.getConversations().then(({ conversations }) => {
+  return (
+    <SafeAreaView style={s.safe}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      {activeConv === null
+        ? <ChatList onOpen={setActiveConv} />
+        : <ChatRoom conv={activeConv} onBack={() => setActiveConv(null)} />
+      }
+    </SafeAreaView>
+  );
+}
+
+// ================================================================
+//  CHAT LIST
+// ================================================================
+function ChatList({ onOpen }) {
+  const [convs,      setConvs]      = useState([]);
+  const [filtered,   setFiltered]   = useState([]);
+  const [search,     setSearch]     = useState('');
+  const [loading,    setLoading]    = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const { conversations } = await API.getConversations();
       setConvs(conversations);
       setFiltered(conversations);
-      setLoading(false);
-    });
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); setRefreshing(false); }
   }, []);
+
+  useEffect(() => { load(); }, []);
 
   useEffect(() => {
     if (!search.trim()) { setFiltered(convs); return; }
-    setFiltered(convs.filter(
-      (c) =>
-        c.user.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.lastMessage.text.toLowerCase().includes(search.toLowerCase())
+    const q = search.toLowerCase();
+    setFiltered(convs.filter(c =>
+      c.user.name.toLowerCase().includes(q) ||
+      c.lastMessage.text.toLowerCase().includes(q)
     ));
   }, [search, convs]);
 
-  const onlineUsers = convs.filter((c) => c.user.isOnline);
+  const online = convs.filter(c => c.user.isOnline);
+
+  const renderItem = ({ item }) => {
+    const { bg, fg } = getAv(item.user.name);
+    const unread = item.unreadCount > 0;
+    return (
+      <Pressable
+        style={({ pressed }) => [s.card, unread && s.cardUnread, pressed && { opacity: 0.82 }]}
+        onPress={() => onOpen(item)}
+      >
+        <View>
+          <View style={[s.avatar, { backgroundColor: bg }]}>
+            <Text style={[s.avatarTxt, { color: fg }]}>{getInitials(item.user.name)}</Text>
+          </View>
+          {item.user.isOnline && <View style={s.avatarDot} />}
+        </View>
+        <View style={s.cardBody}>
+          <View style={s.row}>
+            <Text style={[s.cName, unread && s.bold]} numberOfLines={1}>{item.user.name}</Text>
+            <Text style={[s.cTime, unread && s.cTimeAccent]}>{timeAgo(item.lastMessage.timestamp)}</Text>
+          </View>
+          <View style={s.row}>
+            <Text style={[s.cMsg, unread && s.cMsgBold]} numberOfLines={1}>{item.lastMessage.text}</Text>
+            {unread && <View style={s.badge}><Text style={s.badgeTxt}>{item.unreadCount > 99 ? '99+' : item.unreadCount}</Text></View>}
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
-    <div className="list-screen">
-      <div className="list-header">
-        <div className="list-toprow">
-          <h1 className="list-title">Chats</h1>
-          <button className="compose-btn">✏️</button>
-        </div>
-        <div className="search-box">
-          <span className="search-icon-lbl">🔍</span>
-          <input
-            className="search-input"
+    <View style={s.screen}>
+      {/* Header */}
+      <View style={s.listHeader}>
+        <View style={s.listHeaderTop}>
+          <Text style={s.listTitle}>Chats</Text>
+          <TouchableOpacity style={s.composeBtn}>
+            <Text style={{ fontSize: 17 }}>✏️</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={s.searchBar}>
+          <Text style={{ fontSize: 15 }}>🔍</Text>
+          <TextInput
+            style={s.searchInput}
             placeholder="Search..."
+            placeholderTextColor="#A0AEC0"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChangeText={setSearch}
           />
-          {search && <button className="clear-btn" onClick={() => setSearch("")}>✕</button>}
-        </div>
-      </div>
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Text style={{ fontSize: 13, color: '#A0AEC0', paddingHorizontal: 4 }}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
 
-      {/* Online users */}
-      {onlineUsers.length > 0 && (
-        <div className="online-row">
-          {onlineUsers.map((c) => {
-            const av = getAv(c.user.name);
-            return (
-              <div key={c.id} className="ou-wrap" onClick={() => onOpen(c)}>
-                <div className="ou-rel">
-                  <div className="ou-avatar" style={{ background: av.bg, color: av.fg }}>
-                    {getInitials(c.user.name)}
-                  </div>
-                  <div className="ou-dot" />
-                </div>
-                <span className="ou-name">{c.user.name.split(" ")[0]}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="convs-scroll">
-        {loading ? (
-          <div className="spinner" />
-        ) : filtered.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-icon">💬</span>
-            <span className="empty-title">No results found</span>
-            <span className="empty-sub">
-              {search ? "Try a different keyword" : "Start a new conversation"}
-            </span>
-          </div>
-        ) : (
-          <>
-            <div className="section-tag">All Messages</div>
-            {filtered.map((c, i) => {
-              const av = getAv(c.user.name);
-              const unread = c.unreadCount > 0;
+      {/* Online strip */}
+      {online.length > 0 && (
+        <View style={s.onlineStrip}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.onlineScroll}>
+            {online.map(c => {
+              const { bg, fg } = getAv(c.user.name);
               return (
-                <div
-                  key={c.id}
-                  className="conv-card"
-                  style={{ animationDelay: `${i * 0.045}s` }}
-                  onClick={() => onOpen(c)}
-                >
-                  <div className="ca-wrap">
-                    <div className="ca" style={{ background: av.bg, color: av.fg }}>
-                      {getInitials(c.user.name)}
-                    </div>
-                    {c.user.isOnline && <div className="ca-dot" />}
-                  </div>
-                  <div className="cc">
-                    <div className="cc-row1">
-                      <span className={`cc-name ${unread ? "bold" : ""}`}>{c.user.name}</span>
-                      <span className={`cc-time ${unread ? "accent" : ""}`}>{formatTime(c.lastMessage.timestamp)}</span>
-                    </div>
-                    <div className="cc-row2">
-                      <span className={`cc-msg ${unread ? "bold" : ""}`}>{c.lastMessage.text}</span>
-                      {unread && <div className="badge">{c.unreadCount > 99 ? "99+" : c.unreadCount}</div>}
-                    </div>
-                  </div>
-                </div>
+                <TouchableOpacity key={c.id} style={s.onlineUser} onPress={() => onOpen(c)} activeOpacity={0.75}>
+                  <View>
+                    <View style={[s.onlineAv, { backgroundColor: bg }]}>
+                      <Text style={[s.onlineAvTxt, { color: fg }]}>{getInitials(c.user.name)}</Text>
+                    </View>
+                    <View style={s.onlineDot} />
+                  </View>
+                  <Text style={s.onlineName} numberOfLines={1}>{c.user.name.split(' ')[0]}</Text>
+                </TouchableOpacity>
               );
             })}
-          </>
-        )}
-      </div>
-    </div>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* List */}
+      {loading ? (
+        <View style={s.center}><ActivityIndicator size="large" color="#4299E1" /></View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          renderItem={renderItem}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={filtered.length === 0 ? s.emptyList : s.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor="#4299E1" colors={['#4299E1']} />}
+          ListHeaderComponent={filtered.length > 0 ? <Text style={s.sectionLabel}>ALL MESSAGES</Text> : null}
+          ListEmptyComponent={
+            <View style={s.emptyWrap}>
+              <Text style={{ fontSize: 48, marginBottom: 10 }}>💬</Text>
+              <Text style={s.emptyTitle}>No conversations found</Text>
+              <Text style={s.emptySub}>{search ? 'Try a different keyword' : 'Start a new conversation'}</Text>
+            </View>
+          }
+        />
+      )}
+    </View>
   );
 }
 
-// ============================================================
+// ================================================================
 //  CHAT ROOM
-// ============================================================
+// ================================================================
 function ChatRoom({ conv, onBack }) {
   const { id: convId, user } = conv;
-  const av = getAv(user.name);
+  const { bg: avBg, fg: avFg } = getAv(user.name);
 
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [typing, setTyping] = useState(false);
-  const endRef = useRef(null);
+  const [input,    setInput]    = useState('');
+  const [loading,  setLoading]  = useState(true);
+  const [sending,  setSending]  = useState(false);
+  const [typing,   setTyping]   = useState(false);
+  const listRef  = useRef(null);
+  const timerRef = useRef(null);
 
   useEffect(() => {
-    api.getMessages(convId).then(({ messages }) => {
+    API.getMessages(convId).then(({ messages }) => {
       setMessages(messages);
       setLoading(false);
     });
+    return () => clearTimeout(timerRef.current);
   }, [convId]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
   }, [messages, typing]);
 
   const handleSend = async () => {
     if (!input.trim() || sending) return;
     const text = input.trim();
-    setInput("");
+    setInput('');
     setSending(true);
-
     const tempId = `t-${Date.now()}`;
-    setMessages((p) => [...p, { id: tempId, text, senderId: "me", timestamp: new Date().toISOString(), status: "sending" }]);
-
+    setMessages(p => [...p, { id: tempId, text, senderId: 'me', timestamp: new Date().toISOString(), status: 'sending' }]);
     try {
-      const { message } = await api.sendMessage(convId, text);
-      setMessages((p) => p.map((m) => (m.id === tempId ? { ...message, status: "delivered" } : m)));
-
-      // Simulate reply
-      setTimeout(() => setTyping(true), 900);
-      setTimeout(() => {
+      const { message } = await API.sendMessage(convId, text);
+      setMessages(p => p.map(m => m.id === tempId ? { ...message } : m));
+      timerRef.current = setTimeout(() => setTyping(true), 900);
+      timerRef.current = setTimeout(() => {
         setTyping(false);
-        const replies = [
-          "Got it, thanks! 😊", "Sounds great!", "That makes sense 👌",
-          "Let me check on that", "Sure, I'll get back to you soon!",
-        ];
-        setMessages((p) => [...p, {
-          id: `r-${Date.now()}`,
-          text: replies[Math.floor(Math.random() * replies.length)],
-          senderId: user.id,
-          timestamp: new Date().toISOString(),
-          status: "delivered",
-        }]);
+        const replies = ['Got it! 😊', 'Sounds great!', 'Makes sense 👌', 'On it!', "Sure, I'll get back to you!"];
+        setMessages(p => [...p, { id: `r-${Date.now()}`, text: replies[Math.floor(Math.random() * replies.length)], senderId: user.id, timestamp: new Date().toISOString(), status: 'delivered' }]);
       }, 2800);
     } catch {
-      setMessages((p) => p.filter((m) => m.id !== tempId));
+      setMessages(p => p.filter(m => m.id !== tempId));
       setInput(text);
-    } finally {
-      setSending(false);
-    }
+    } finally { setSending(false); }
   };
 
-  const onKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  const renderItem = ({ item, index }) => {
+    const isMine = item.senderId === 'me';
+    const prev   = messages[index - 1];
+    const showAv = !isMine && (!prev || prev.senderId !== item.senderId);
+    return (
+      <View style={[s.msgRow, isMine ? s.msgRowMine : s.msgRowTheirs]}>
+        {!isMine && (
+          showAv
+            ? <View style={[s.miniAv, { backgroundColor: avBg }]}><Text style={[s.miniAvTxt, { color: avFg }]}>{getInitials(user.name)}</Text></View>
+            : <View style={s.miniAvGhost} />
+        )}
+        <View style={[s.bubble, isMine ? s.bubbleMine : s.bubbleTheirs]}>
+          <Text style={[s.bubbleTxt, isMine ? s.txtMine : s.txtTheirs]}>{item.text}</Text>
+          <View style={s.bubbleMeta}>
+            <Text style={[s.bubbleTime, isMine ? s.timeMine : s.timeTheirs]}>{chatTime(item.timestamp)}</Text>
+            {isMine && <Text style={s.tick}>{item.status === 'sending' ? ' ⏳' : ' ✓✓'}</Text>}
+          </View>
+        </View>
+      </View>
+    );
   };
 
   return (
-    <div className="room-screen">
+    <View style={s.screen}>
       {/* Header */}
-      <div className="room-header">
-        <button className="back-btn" onClick={onBack}>‹</button>
-        <div className="rh-info">
-          <div className="rh-avatar" style={{ background: av.bg, color: av.fg }}>
-            {getInitials(user.name)}
-            {user.isOnline && <div className="rh-online-dot" />}
-          </div>
-          <div className="rh-text">
-            <div className="rh-name">{user.name}</div>
-            <div className={`rh-status ${user.isOnline ? "online" : ""}`}>
-              {user.isOnline ? "Active now" : "Offline"}
-            </div>
-          </div>
-        </div>
-        <div className="rh-actions">
-          <button className="rh-btn">📞</button>
-          <button className="rh-btn">⋮</button>
-        </div>
-      </div>
+      <View style={s.chatHeader}>
+        <TouchableOpacity style={s.backBtn} onPress={onBack} activeOpacity={0.75}>
+          <Text style={s.backIcon}>‹</Text>
+        </TouchableOpacity>
+        <View style={s.chatHeaderInfo}>
+          <View>
+            <View style={[s.chatAv, { backgroundColor: avBg }]}>
+              <Text style={[s.chatAvTxt, { color: avFg }]}>{getInitials(user.name)}</Text>
+            </View>
+            {user.isOnline && <View style={s.chatAvDot} />}
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={s.chatName} numberOfLines={1}>{user.name}</Text>
+            <Text style={[s.chatStatus, user.isOnline && s.chatStatusOnline]}>
+              {user.isOnline ? 'Active now' : 'Offline'}
+            </Text>
+          </View>
+        </View>
+        <View style={s.chatActions}>
+          <TouchableOpacity style={s.iconBtn}><Text style={s.iconBtnTxt}>📞</Text></TouchableOpacity>
+          <TouchableOpacity style={s.iconBtn}><Text style={s.iconBtnTxt}>⋮</Text></TouchableOpacity>
+        </View>
+      </View>
 
-      {/* Messages */}
-      <div className="msgs-area">
-        {loading ? (
-          <div style={{ display: "flex", justifyContent: "center", paddingTop: 40 }}>
-            <div className="spinner" />
-          </div>
-        ) : (
-          <>
-            <div className="date-div">
-              <div className="date-line" />
-              <span className="date-lbl">Today</span>
-              <div className="date-line" />
-            </div>
-
-            {messages.map((msg, i) => {
-              const isMine = msg.senderId === "me";
-              const prev = messages[i - 1];
-              const showAv = !isMine && (!prev || prev.senderId !== msg.senderId);
-
-              return (
-                <div
-                  key={msg.id}
-                  className={`msg-row ${isMine ? "mine" : ""}`}
-                  style={{ animationDelay: `${Math.min(i * 0.035, 0.25)}s`, marginBottom: 2 }}
-                >
-                  {!isMine && (
-                    showAv
-                      ? <div className="m-avatar" style={{ background: av.bg, color: av.fg }}>{getInitials(user.name)}</div>
-                      : <div className="m-avatar-ghost" />
-                  )}
-                  <div className={`bubble ${isMine ? "mine" : "theirs"}`}>
-                    <p className={`b-text ${isMine ? "mine" : "theirs"}`}>{msg.text}</p>
-                    <div className="b-meta">
-                      <span className={`b-time ${isMine ? "mine" : "theirs"}`}>{formatChatTime(msg.timestamp)}</span>
-                      {isMine && (
-                        <span className="b-status">
-                          {msg.status === "sending" ? "⏳" : "✓✓"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {typing && (
-              <div className="typing-row">
-                <div className="m-avatar" style={{ background: av.bg, color: av.fg }}>{getInitials(user.name)}</div>
-                <div className="typing-bubble">
-                  <div className="td" /><div className="td" /><div className="td" />
-                </div>
-              </div>
-            )}
-
-            <div ref={endRef} />
-          </>
-        )}
-      </div>
-
-      {/* Input */}
-      <div className="input-bar">
-        <button className="attach-btn">📎</button>
-        <div className="input-wrap">
-          <textarea
-            className="msg-input"
-            placeholder="Type a message..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={1}
-          />
-          <button className="emoji-btn">😊</button>
-        </div>
-        <button className="send-btn" onClick={handleSend} disabled={!input.trim() || sending}>
-          ➤
-        </button>
-      </div>
-    </div>
+      {/* Messages + Input */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        {loading
+          ? <View style={s.center}><ActivityIndicator size="large" color="#4299E1" /></View>
+          : (
+            <FlatList
+              ref={listRef}
+              data={messages}
+              keyExtractor={item => item.id}
+              renderItem={renderItem}
+              onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={s.msgList}
+              ListHeaderComponent={
+                <View style={s.dateDivider}>
+                  <View style={s.dateLine} /><Text style={s.dateText}>Today</Text><View style={s.dateLine} />
+                </View>
+              }
+              ListFooterComponent={typing ? <TypingIndicator /> : <View style={{ height: 8 }} />}
+            />
+          )
+        }
+        {/* Input bar */}
+        <View style={s.inputBar}>
+          <TouchableOpacity style={s.iconBtn}><Text style={s.iconBtnTxt}>📎</Text></TouchableOpacity>
+          <View style={s.inputWrap}>
+            <TextInput
+              style={s.textInput}
+              placeholder="Type a message..."
+              placeholderTextColor="#A0AEC0"
+              value={input}
+              onChangeText={setInput}
+              multiline
+              maxLength={1000}
+            />
+            <TouchableOpacity><Text style={{ fontSize: 20, opacity: 0.7 }}>😊</Text></TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={[s.sendBtn, (!input.trim() || sending) && s.sendBtnOff]}
+            onPress={handleSend}
+            disabled={!input.trim() || sending}
+            activeOpacity={0.8}
+          >
+            {sending
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={s.sendIcon}>➤</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
+
+// ================================================================
+//  STYLES
+// ================================================================
+const s = StyleSheet.create({
+  safe:   { flex: 1, backgroundColor: '#F0F2F5' },
+  screen: { flex: 1, backgroundColor: '#F0F2F5' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  // ── List header ──────────────────────────────
+  listHeader:    { backgroundColor: '#fff', paddingHorizontal: 22, paddingTop: 12, paddingBottom: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 3 },
+  listHeaderTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  listTitle:     { fontSize: 28, fontWeight: '800', color: '#1A202C', letterSpacing: -0.5 },
+  composeBtn:    { width: 40, height: 40, borderRadius: 20, backgroundColor: '#4299E1', alignItems: 'center', justifyContent: 'center', shadowColor: '#4299E1', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 5 },
+  searchBar:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F2F5', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 14, gap: 8 },
+  searchInput:   { flex: 1, fontSize: 15, color: '#1A202C', padding: 0 },
+
+  // ── Online strip ─────────────────────────────
+  onlineStrip:  { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EDF2F7' },
+  onlineScroll: { paddingHorizontal: 22, paddingVertical: 12, gap: 18 },
+  onlineUser:   { alignItems: 'center', gap: 5, minWidth: 54 },
+  onlineAv:     { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 4, elevation: 3 },
+  onlineAvTxt:  { fontSize: 15, fontWeight: '800' },
+  onlineDot:    { position: 'absolute', bottom: 1, right: 1, width: 13, height: 13, borderRadius: 6.5, backgroundColor: '#48BB78', borderWidth: 2.5, borderColor: '#fff' },
+  onlineName:   { fontSize: 11, color: '#718096', fontWeight: '600', textAlign: 'center', maxWidth: 54 },
+
+  // ── Conversation cards ────────────────────────
+  listContent:  { paddingTop: 4, paddingBottom: 24 },
+  emptyList:    { flexGrow: 1 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#A0AEC0', letterSpacing: 1, paddingHorizontal: 22, paddingTop: 14, paddingBottom: 6 },
+  card:         { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', marginHorizontal: 12, marginBottom: 6, borderRadius: 20, padding: 12, gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2 },
+  cardUnread:   { backgroundColor: '#F0F7FF' },
+  cardBody:     { flex: 1, minWidth: 0 },
+  row:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 },
+  avatar:       { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 4, elevation: 3 },
+  avatarTxt:    { fontSize: 17, fontWeight: '800' },
+  avatarDot:    { position: 'absolute', bottom: 1, right: 1, width: 14, height: 14, borderRadius: 7, backgroundColor: '#48BB78', borderWidth: 2.5, borderColor: '#fff' },
+  cName:        { fontSize: 15.5, fontWeight: '600', color: '#1A202C', flex: 1, marginRight: 8 },
+  bold:         { fontWeight: '800' },
+  cTime:        { fontSize: 12, color: '#A0AEC0' },
+  cTimeAccent:  { color: '#4299E1', fontWeight: '700' },
+  cMsg:         { fontSize: 13.5, color: '#A0AEC0', flex: 1 },
+  cMsgBold:     { color: '#1A202C', fontWeight: '600' },
+  badge:        { backgroundColor: '#4299E1', minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  badgeTxt:     { color: '#fff', fontSize: 11, fontWeight: '800' },
+  emptyWrap:    { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  emptyTitle:   { fontSize: 17, fontWeight: '700', color: '#4A5568' },
+  emptySub:     { fontSize: 13, color: '#A0AEC0', textAlign: 'center', marginTop: 4 },
+
+  // ── Chat header ───────────────────────────────
+  chatHeader:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 10, gap: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.07, shadowRadius: 6, elevation: 3 },
+  backBtn:          { width: 38, height: 38, borderRadius: 19, backgroundColor: '#EDF2F7', alignItems: 'center', justifyContent: 'center' },
+  backIcon:         { fontSize: 30, color: '#4299E1', lineHeight: 34, marginTop: -2 },
+  chatHeaderInfo:   { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
+  chatAv:           { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  chatAvTxt:        { fontSize: 15, fontWeight: '800' },
+  chatAvDot:        { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#48BB78', borderWidth: 2, borderColor: '#fff' },
+  chatName:         { fontSize: 16, fontWeight: '800', color: '#1A202C' },
+  chatStatus:       { fontSize: 12, color: '#A0AEC0', marginTop: 1 },
+  chatStatusOnline: { color: '#48BB78', fontWeight: '600' },
+  chatActions:      { flexDirection: 'row', gap: 6 },
+  iconBtn:          { width: 38, height: 38, borderRadius: 19, backgroundColor: '#EDF2F7', alignItems: 'center', justifyContent: 'center' },
+  iconBtnTxt:       { fontSize: 17 },
+
+  // ── Messages ──────────────────────────────────
+  msgList:      { paddingHorizontal: 10, paddingTop: 12 },
+  dateDivider:  { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 },
+  dateLine:     { flex: 1, height: 1, backgroundColor: '#CBD5E0' },
+  dateText:     { fontSize: 11, fontWeight: '700', color: '#718096', letterSpacing: 0.4 },
+  msgRow:       { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 3 },
+  msgRowMine:   { flexDirection: 'row-reverse' },
+  msgRowTheirs: { flexDirection: 'row' },
+  miniAv:       { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
+  miniAvTxt:    { fontSize: 10, fontWeight: '800' },
+  miniAvGhost:  { width: 28, marginRight: 6 },
+  bubble:       { maxWidth: '73%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20 },
+  bubbleMine:   { backgroundColor: '#4299E1', borderBottomRightRadius: 5, shadowColor: '#4299E1', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
+  bubbleTheirs: { backgroundColor: '#fff', borderBottomLeftRadius: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 4, elevation: 2 },
+  bubbleTxt:    { fontSize: 14.5, lineHeight: 21 },
+  txtMine:      { color: '#fff' },
+  txtTheirs:    { color: '#1A202C' },
+  bubbleMeta:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 },
+  bubbleTime:   { fontSize: 10.5 },
+  timeMine:     { color: 'rgba(255,255,255,0.65)' },
+  timeTheirs:   { color: '#A0AEC0' },
+  tick:         { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
+
+  // ── Typing ────────────────────────────────────
+  typingRow:    { paddingLeft: 14, marginBottom: 8 },
+  typingBubble: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#fff', borderRadius: 20, borderBottomLeftRadius: 5, paddingHorizontal: 16, paddingVertical: 14, gap: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 4, elevation: 2 },
+  typingDot:    { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#CBD5E0' },
+
+  // ── Input bar ─────────────────────────────────
+  inputBar:  { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#fff', paddingHorizontal: 12, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 12 : 14, gap: 8, borderTopWidth: 1, borderTopColor: '#EDF2F7' },
+  inputWrap: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#EDF2F7', borderRadius: 22, paddingHorizontal: 14, paddingVertical: 8, gap: 8, minHeight: 42 },
+  textInput: { flex: 1, fontSize: 15, color: '#1A202C', maxHeight: 100, padding: 0, lineHeight: 21 },
+  sendBtn:   { width: 44, height: 44, borderRadius: 22, backgroundColor: '#4299E1', alignItems: 'center', justifyContent: 'center', shadowColor: '#4299E1', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 5 },
+  sendBtnOff:{ opacity: 0.4, shadowOpacity: 0, elevation: 0 },
+  sendIcon:  { fontSize: 18, color: '#fff' },
+});

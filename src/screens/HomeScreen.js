@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { Alert } from "react-native";
-import { View, Text, StyleSheet, Image, FlatList, TextInput, TouchableOpacity } from "react-native";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { View, Text, StyleSheet, Image, FlatList, TextInput, TouchableOpacity, Alert } from "react-native";
+import { Ionicons} from "@expo/vector-icons";
 
 const demoPosts = [
  {
@@ -300,23 +299,23 @@ composerCard: {
   elevation: 2
 },
 
-postInputContainer: {
-  flexDirection: "row",
-  alignItems: "center"
-},
+// postInputContainer: {
+//   flexDirection: "row",
+//   alignItems: "center"
+// },
 
-inputProfile: {
-  width: 38,
-  height: 38,
-  borderRadius: 20,
-  marginRight: 10
-},
+// inputProfile: {
+//   width: 38,
+//   height: 38,
+//   borderRadius: 20,
+//   marginRight: 10
+// },
 
-postInput: {
-  flex: 1,
-  fontSize: 14,
-  maxHeight: 80
-},
+// postInput: {
+//   flex: 1,
+//   fontSize: 14,
+//   maxHeight: 80
+// },
 
 previewWrapper: {
   width: "100%",
@@ -327,19 +326,19 @@ previewWrapper: {
   backgroundColor: "#ddd"
 },
 
-previewImage: {
-  width: "100%",
-  height: "100%",
-},
+// previewImage: {
+//   width: "100%",
+//   height: "100%",
+// },
 
-removeBtn: {
-  position: "absolute",
-  top: 8,
-  right: 8,
-  backgroundColor: "rgba(0,0,0,0.6)",
-  padding: 6,
-  borderRadius: 20
-},
+// removeBtn: {
+//   position: "absolute",
+//   top: 8,
+//   right: 8,
+//   backgroundColor: "rgba(0,0,0,0.6)",
+//   padding: 6,
+//   borderRadius: 20
+// },
 
 postBtn: {
   backgroundColor: "#007AFF",
