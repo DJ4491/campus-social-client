@@ -1,6 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { COLORS } from "../styles/theme";
+import { StyleSheet, Text, View } from "react-native";
 
 export default function VideoCallScreen() {
   return (

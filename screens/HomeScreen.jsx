@@ -1,6 +1,7 @@
+// top imports - remove PostCard from react-native import
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,9 +18,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Avatar from "../components/Avatar";
+import { useAuthContext } from "../hooks/use-auth-context";
 
-const API_URL = "https://campus-social-backend-1yfe.onrender.com/posts/";
-
+const API_URL = "https://campus-social-backend-1yfe.onrender.com/posts";
+const RECOMMENDED_IDS_URL =
+  "https://campus-social-backend-1yfe.onrender.com/api/posts_you_may_like/";
+const LIMIT = 10;
+const RECOMMENDED_FETCH_LIMIT = 50;
 const formatRelativeTime = (iso) => {
   if (!iso) return "";
   const created = new Date(iso);
@@ -45,24 +51,38 @@ const formatRelativeTime = (iso) => {
   return created.toLocaleDateString();
 };
 
-const PostItem = ({ item, onPressComments }) => {
-  const authorObj =
-    item?.author && typeof item.author === "object" ? item.author : null;
-  const authorName =
-    (authorObj?.display_name || authorObj?.username || "").trim?.() ||
-    (typeof item?.author === "string" ? item.author : "") ||
-    "Unknown";
-  const avatarUri =
-    item?.avatar ||
-    authorObj?.avatar_url ||
-    `https://i.pravatar.cc/150?u=${encodeURIComponent(String(item?.id ?? "0"))}`;
+const PostItem = ({
+  item,
+  onPressComments,
+  isHighlighted,
+  highlightOpacity,
+}) => {
+  const authorObj = useMemo(
+    () =>
+      item?.author && typeof item.author === "object" ? item.author : null,
+    [item?.author],
+  );
+  const authorName = useMemo(
+    () =>
+      (authorObj?.display_name || authorObj?.username || "").trim?.() ||
+      (typeof item?.author === "string" ? item.author : "") ||
+      "Unknown",
+    [authorObj, item?.author],
+  );
+  const avatarUri = useMemo(
+    () =>
+      item?.avatar ||
+      authorObj?.avatar_url ||
+      `https://i.pravatar.cc/150?u=${encodeURIComponent(String(item?.id ?? "0"))}`,
+    [item?.avatar, authorObj?.avatar_url, item?.id],
+  );
 
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(item.likes ?? 0);
 
   const likeScale = useRef(new Animated.Value(1)).current;
 
-  const toggleLike = () => {
+  const toggleLike = useCallback(() => {
     const nextLiked = !liked;
     setLiked(nextLiked);
     setLikeCount((prev) => prev + (nextLiked ? 1 : -1));
@@ -79,7 +99,7 @@ const PostItem = ({ item, onPressComments }) => {
         friction: 3,
       }),
     ]).start();
-  };
+  });
 
   const handleShare = async () => {
     try {
@@ -93,23 +113,32 @@ const PostItem = ({ item, onPressComments }) => {
 
   return (
     <View style={styles.postCard}>
+      {isHighlighted ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.postHighlightOverlay, { opacity: highlightOpacity }]}
+        />
+      ) : null}
       <View style={styles.postHeader}>
         <Image source={{ uri: avatarUri }} style={styles.profilePic} />
         <View style={styles.postHeaderText}>
-          <Text style={styles.name}>{authorName}</Text>
-          <Text style={styles.time}>{formatRelativeTime(item.created_at)}</Text>
+          <Text style={styles.name}> {authorName} </Text>
+          <Text style={styles.time}>
+            {" "}
+            {formatRelativeTime(item.created_at)}{" "}
+          </Text>
         </View>
         <Ionicons name="ellipsis-horizontal" size={18} color="#8E8E93" />
       </View>
 
-      <Text style={styles.postTitle}>{item.title}</Text>
-      <Text style={styles.postText}>{item.desc}</Text>
+      <Text style={styles.postTitle}> {item.title} </Text>
+      <Text style={styles.postText}> {item.desc} </Text>
       {item.image ? (
         <Image source={{ uri: item.image }} style={styles.postImage} />
       ) : null}
 
       <View style={styles.postFooterMeta}>
-        <Text style={styles.likeCount}>{likeCount} likes</Text>
+        <Text style={styles.likeCount}> {likeCount} likes </Text>
       </View>
 
       <View style={styles.postActions}>
@@ -141,7 +170,7 @@ const PostItem = ({ item, onPressComments }) => {
           onPress={() => onPressComments?.(item)}
         >
           <Ionicons name="chatbubble-outline" size={18} color="#007AFF" />
-          <Text style={styles.postActionLabel}>Comment</Text>
+          <Text style={styles.postActionLabel}> Comment </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -150,7 +179,7 @@ const PostItem = ({ item, onPressComments }) => {
           onPress={handleShare}
         >
           <Ionicons name="share-outline" size={18} color="#007AFF" />
-          <Text style={styles.postActionLabel}>Share</Text>
+          <Text style={styles.postActionLabel}> Share </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -161,36 +190,208 @@ export default function HomeScreen() {
   const [postText, setPostText] = useState("");
   const [image, setImage] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
   const composerInputRef = useRef(null);
   const [activeCommentPost, setActiveCommentPost] = useState(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [commentsByPost, setCommentsByPost] = useState({});
+  const [recommendedPosts, setRecommendedPosts] = useState([]);
+  const [recommendedLoading, setRecommendedLoading] = useState(false);
+  const [recommendedError, setRecommendedError] = useState(null);
+  const postsListRef = useRef(null);
+  const postsRef = useRef([]);
+  const offsetRef = useRef(0);
+  const hasMoreRef = useRef(true);
+  const loadingMoreRef = useRef(false);
+  const [highlightedPostId, setHighlightedPostId] = useState(null);
+  const highlightOpacity = useRef(new Animated.Value(0)).current;
+  const pendingHighlightIdRef = useRef(null);
+  const viewableIdsRef = useRef(new Set());
+  const { session, profile: contextProfile } = useAuthContext();
+  const [userProfile, setUserProfile] = useState({
+    avatar: null,
+    name: null,
+    username: null,
+  });
 
-  const fetchPosts = async () => {
+  const wait = useCallback((ms) => new Promise((r) => setTimeout(r, ms)), []);
+
+  const fetchInitialPosts = async () => {
     try {
       setError(null);
-      const res = await fetch(API_URL);
-      const data = await res.json();
-      setPosts(Array.isArray(data) ? data : []);
+      setLoading(true);
+      setHasMore(true);
+      hasMoreRef.current = true;
+
+      const res = await fetch(`${API_URL}?limit=${LIMIT}&offset=0`);
+      const data = (await res.json()) || [];
+
+      const arr = Array.isArray(data) ? data : [];
+      postsRef.current = arr;
+      offsetRef.current = arr.length;
+      setPosts(arr);
+      setOffset(arr.length); // use actual returned length
+
+      if (!arr || arr.length < LIMIT) {
+        setHasMore(false);
+        hasMoreRef.current = false;
+      }
     } catch (err) {
-      console.log("Error fetching posts", err?.message || err);
-      setError(`Could not load posts: ${err?.message || "Unknown error"}`);
+      setError("Failed to load posts");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  const loadMorePosts = async () => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return [];
+
+    try {
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+
+      const res = await fetch(
+        `${API_URL}?limit=${LIMIT}&offset=${offsetRef.current}`,
+      );
+      const data = (await res.json()) || [];
+
+      const arr = Array.isArray(data) ? data : [];
+      if (arr.length === 0) {
+        setHasMore(false);
+        hasMoreRef.current = false;
+        return [];
+      }
+
+      const nextPosts = [...postsRef.current, ...arr];
+      postsRef.current = nextPosts;
+      setPosts(nextPosts);
+
+      offsetRef.current = offsetRef.current + arr.length;
+      setOffset(offsetRef.current); // keep state in sync
+
+      if (arr.length < LIMIT) {
+        setHasMore(false);
+        hasMoreRef.current = false;
+      }
+      return arr;
+    } catch (err) {
+      console.log("Error loading more posts", err);
+      return [];
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  };
+
+  const fetchRecommendedPosts = async () => {
+    try {
+      setRecommendedError(null);
+      setRecommendedLoading(true);
+
+      const res = await fetch(RECOMMENDED_IDS_URL);
+      const idsRaw = await res.json();
+      const ids = Array.isArray(idsRaw)
+        ? idsRaw.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+        : [];
+
+      if (ids.length === 0) {
+        setRecommendedPosts([]);
+        return;
+      }
+
+      const idSet = new Set(ids);
+      const byId = new Map();
+
+      // Seed from already loaded posts (if any)
+      for (const p of Array.isArray(posts) ? posts : []) {
+        const id = Number(p?.id);
+        if (Number.isFinite(id) && idSet.has(id)) byId.set(id, p);
+      }
+
+      // Fetch pages from posts API and "filter" to only recommended ids.
+      // Stop early once all IDs are found.
+      let pageOffset = 0;
+      let safety = 0;
+      while (byId.size < ids.length && safety < 50) {
+        const r = await fetch(
+          `${API_URL}?limit=${RECOMMENDED_FETCH_LIMIT}&offset=${pageOffset}`,
+        );
+        const data = (await r.json()) || [];
+        if (!Array.isArray(data) || data.length === 0) break;
+
+        for (const p of data) {
+          const id = Number(p?.id);
+          if (Number.isFinite(id) && idSet.has(id)) byId.set(id, p);
+        }
+
+        pageOffset += data.length;
+        safety += 1;
+      }
+
+      // Keep ordering from the recommendations API (IDs array)
+      const resolved = ids.map((id) => byId.get(id)).filter(Boolean);
+      setRecommendedPosts(resolved);
+    } catch (e) {
+      console.log("Error fetching recommended posts", e?.message || e);
+      setRecommendedError("Failed to load recommended posts");
+      setRecommendedPosts([]);
+    } finally {
+      setRecommendedLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchPosts();
-  }, []);
+    fetchInitialPosts();
+    fetchRecommendedPosts();
+    loadUserProfile();
+  }, [session, contextProfile]);
+
+  const loadUserProfile = async () => {
+    try {
+      if (!session?.user) return;
+
+      const user = session.user;
+
+      const avatarUrl =
+        contextProfile?.avatar_url ||
+        user.user_metadata?.avatar_url ||
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(contextProfile?.username || user.email?.split("@")[0] || "User")}`;
+
+      const displayName =
+        contextProfile?.username ||
+        contextProfile?.full_name ||
+        user.user_metadata?.full_name ||
+        user.email?.split("@")[0] ||
+        "User";
+
+      setUserProfile({
+        avatar: avatarUrl,
+        name: displayName,
+        username: contextProfile?.username || user.email?.split("@")[0] || "user",
+      });
+    } catch (error) {
+      console.error("Error loading user profile:", error);
+      // Fallback to default avatar
+      if (session?.user) {
+        const user = session.user;
+        setUserProfile({
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email?.split("@")[0] || "User")}`,
+          name: user.email?.split("@")[0] || "User",
+          username: user.email?.split("@")[0] || "user",
+        });
+      }
+    }
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchPosts();
+    fetchInitialPosts();
   };
 
   const pickImage = async () => {
@@ -229,13 +430,15 @@ export default function HomeScreen() {
     try {
       const res = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "multipart/form-data" },
+        // IMPORTANT: do NOT set Content-Type for FormData here
         body: formData,
       });
 
       const data = await res.json();
       console.log(data);
 
+      // optionally refresh feed or prepend new post:
+      // setPosts(prev => [data, ...prev]);
       setPostText("");
       setImage(null);
       Alert.alert("Post uploaded!");
@@ -247,17 +450,17 @@ export default function HomeScreen() {
 
   const canPost = postText.trim().length > 0 || image !== null;
 
-  const openComments = (post) => {
+  const openComments = useCallback((post) => {
     setActiveCommentPost(post);
     setCommentDraft("");
-  };
+  }, []);
 
-  const closeComments = () => {
+  const closeComments = useCallback(() => {
     setActiveCommentPost(null);
     setCommentDraft("");
-  };
+  }, []);
 
-  const submitCommentToActivePost = () => {
+  const submitCommentToActivePost = useCallback(() => {
     if (!activeCommentPost || !commentDraft.trim()) return;
 
     setCommentsByPost((prev) => {
@@ -274,16 +477,194 @@ export default function HomeScreen() {
     });
 
     setCommentDraft("");
-  };
+  }, [activeCommentPost, commentDraft]);
 
-  const renderPost = ({ item }) => (
-    <PostItem item={item} onPressComments={openComments} />
+  const renderPost = useCallback(
+    ({ item }) => (
+      <PostItem
+        item={item}
+        onPressComments={openComments}
+        isHighlighted={String(item?.id) === String(highlightedPostId)}
+        highlightOpacity={highlightOpacity}
+      />
+    ),
+    [openComments, highlightedPostId, highlightOpacity],
+  );
+
+  const triggerHighlight = useCallback(
+    (postId) => {
+      const idStr = String(postId);
+      setHighlightedPostId(idStr);
+
+      highlightOpacity.stopAnimation();
+      highlightOpacity.setValue(0);
+      Animated.sequence([
+        Animated.timing(highlightOpacity, {
+          toValue: 0.22,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.timing(highlightOpacity, {
+          toValue: 0,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Clear highlight after a short delay so it doesn't persist.
+      setTimeout(() => {
+        setHighlightedPostId((prev) => (prev === idStr ? null : prev));
+      }, 1200);
+    },
+    [highlightOpacity],
+  );
+
+  const triggerHighlightRef = useRef(triggerHighlight);
+  useEffect(() => {
+    triggerHighlightRef.current = triggerHighlight;
+  }, [triggerHighlight]);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 60,
+  }).current;
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    // Track what is visible
+    const nextVisible = new Set(
+      (viewableItems || [])
+        .map((v) => v?.item?.id)
+        .filter((id) => id !== null && id !== undefined)
+        .map((id) => String(id)),
+    );
+    viewableIdsRef.current = nextVisible;
+
+    const pending = pendingHighlightIdRef.current;
+    if (!pending) return;
+
+    if (nextVisible.has(String(pending))) {
+      pendingHighlightIdRef.current = null;
+      triggerHighlightRef.current?.(pending);
+    }
+  }).current;
+
+  const scrollToPostId = useCallback(
+    async (postId) => {
+      const idStr = String(postId);
+
+      // If not loaded yet, load more pages until found (or no more).
+      let index = postsRef.current.findIndex((p) => String(p?.id) === idStr);
+      let safety = 0;
+      while (index < 0 && hasMoreRef.current && safety < 25) {
+        const newlyLoaded = await loadMorePosts();
+        if (!newlyLoaded || newlyLoaded.length === 0) break;
+        await wait(0);
+        index = postsRef.current.findIndex((p) => String(p?.id) === idStr);
+        safety += 1;
+      }
+
+      if (index < 0) return;
+
+      // Highlight once the target row becomes visible (so timing matches long scrolls).
+      pendingHighlightIdRef.current = idStr;
+      if (viewableIdsRef.current.has(idStr)) {
+        pendingHighlightIdRef.current = null;
+        triggerHighlight(postId);
+        return;
+      }
+
+      // Give FlatList a moment to render new rows before scrolling.
+      await wait(50);
+      postsListRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0,
+      });
+    },
+    [loadMorePosts, triggerHighlight, wait],
   );
 
   const activeComments =
     activeCommentPost && commentsByPost[activeCommentPost.id]
       ? commentsByPost[activeCommentPost.id]
       : [];
+
+  // recommendedPosts are fetched by IDs from RECOMMENDED_IDS_URL and then
+  // filtered out of the posts API pages.
+
+  const renderRecommendedPost = useCallback(
+    ({ item }) => {
+      const cover = item.image;
+      const title = item.title || "Recommended";
+      const author =
+        typeof item.author === "string"
+          ? item.author
+          : item.author?.display_name || item.author?.username || "Unknown";
+
+      return (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.recommendedCard}
+          onPress={() => {
+            scrollToPostId(item.id);
+          }}
+        >
+          {cover ? (
+            <Image source={{ uri: cover }} style={styles.recommendedImage} />
+          ) : (
+            <View style={styles.recommendedImagePlaceholder}>
+              <Ionicons name="image-outline" size={22} color="#9CA3AF" />
+            </View>
+          )}
+          <Text style={styles.recommendedTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          <Text style={styles.recommendedMeta} numberOfLines={1}>
+            {author} • {(item.likes ?? 0).toString()} likes
+          </Text>
+        </TouchableOpacity>
+      );
+    },
+    [scrollToPostId],
+  );
+
+  const renderPostsHeader = useCallback(() => {
+    if (
+      !recommendedLoading &&
+      !recommendedError &&
+      recommendedPosts.length === 0
+    ) {
+      return null;
+    }
+
+    return (
+      <View style={styles.recommendedSection}>
+        <View style={styles.recommendedHeader}>
+          <Text style={styles.recommendedHeaderTitle}> Recommended </Text>
+          {recommendedLoading ? (
+            <ActivityIndicator size="small" color="#007AFF" />
+          ) : (
+            <Text style={styles.recommendedHeaderLink}> For you </Text>
+          )}
+        </View>
+        {recommendedError ? (
+          <Text style={styles.recommendedErrorText}> {recommendedError} </Text>
+        ) : null}
+        <FlatList
+          data={recommendedPosts}
+          keyExtractor={(item) => `rec-${String(item.id)}`}
+          renderItem={renderRecommendedPost}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.recommendedListContent}
+        />
+      </View>
+    );
+  }, [
+    recommendedError,
+    recommendedLoading,
+    recommendedPosts,
+    renderRecommendedPost,
+  ]);
 
   return (
     <View style={styles.container}>
@@ -299,10 +680,12 @@ export default function HomeScreen() {
         </View>
         <View style={styles.headerIcons}>
           <Ionicons name="notifications-outline" size={24} color="#007AFF" />
-          <Image
-            source={{ uri: "https://i.pravatar.cc/150?img=1" }}
-            style={styles.profilePicSmall}
-          />
+          <View style={{ marginLeft: 8 }}>
+            <Avatar
+              uri={userProfile.avatar || "https://i.pravatar.cc/150?img=1"}
+              size={32}
+            />
+          </View>
         </View>
       </View>
 
@@ -311,17 +694,19 @@ export default function HomeScreen() {
         <View style={styles.logoCircle}>
           <Ionicons name="school-outline" size={20} color="#fff" />
         </View>
-        <Text style={styles.title}>Campus Social</Text>
+        <Text style={styles.title}> Campus Social </Text>
       </View>
 
       {/* WHAT'S ON YOUR MIND */}
       <View style={styles.composerCard}>
         {/* TOP ROW */}
         <View style={styles.postInputContainer}>
-          <Image
-            source={{ uri: "https://i.pravatar.cc/150?img=1" }}
-            style={styles.inputProfile}
-          />
+          <View style={{ marginRight: 10 }}>
+            <Avatar
+              uri={userProfile.avatar || "https://i.pravatar.cc/150?img=1"}
+              size={38}
+            />
+          </View>
 
           <TextInput
             placeholder="What's on your mind?"
@@ -360,15 +745,15 @@ export default function HomeScreen() {
             onPress={handlePost}
             disabled={!canPost}
           >
-            <Text style={{ color: "#fff", fontWeight: "bold" }}>Post</Text>
+            <Text style={{ color: "#fff", fontWeight: "bold" }}> Post </Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* UPCOMING EVENTS */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Upcoming Events</Text>
-        <Text style={styles.sectionLink}>All</Text>
+        <Text style={styles.sectionTitle}> Upcoming Events </Text>
+        <Text style={styles.sectionLink}> All </Text>
       </View>
 
       <View style={styles.eventsRow}>
@@ -397,18 +782,24 @@ export default function HomeScreen() {
             icon: "code-slash-outline",
             color: "#FF2D55",
           },
-        ].map((event, i) => (
-          <View key={i} style={styles.eventCard}>
+        ].map((event, i, arr) => (
+          <View
+            key={i}
+            style={[
+              styles.eventCard,
+              i === arr.length - 1 && { marginRight: 0 },
+            ]}
+          >
             <View
               style={[
                 styles.eventIconWrapper,
                 { backgroundColor: event.color },
               ]}
             >
-              <Ionicons name={event.icon} size={18} color="#fff" />
+              <Ionicons name={event.icon} size={16} color="#fff" />
             </View>
-            <Text style={styles.eventLabel}>{event.label}</Text>
-            <Text style={styles.eventDate}>{event.date}</Text>
+            <Text style={styles.eventLabel}> {event.label} </Text>
+            <Text style={styles.eventDate}> {event.date} </Text>
           </View>
         ))}
       </View>
@@ -416,16 +807,16 @@ export default function HomeScreen() {
       {/* FEED FILTER TABS */}
       <View style={styles.tabsRow}>
         <View style={[styles.tabPill, styles.tabPillActive]}>
-          <Text style={[styles.tabText, styles.tabTextActive]}>All</Text>
+          <Text style={[styles.tabText, styles.tabTextActive]}> All </Text>
         </View>
         <View style={styles.tabPill}>
-          <Text style={styles.tabText}>Announcements</Text>
+          <Text style={styles.tabText}> Announcements </Text>
         </View>
         <View style={styles.tabPill}>
-          <Text style={styles.tabText}>Campus News</Text>
+          <Text style={styles.tabText}> Campus News </Text>
         </View>
         <View style={styles.tabPill}>
-          <Text style={styles.tabText}>Lost &amp; Found</Text>
+          <Text style={styles.tabText}> Lost & amp; Found </Text>
         </View>
       </View>
 
@@ -436,20 +827,45 @@ export default function HomeScreen() {
         </View>
       ) : (
         <>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? <Text style={styles.errorText}> {error} </Text> : null}
 
           <FlatList
+            ref={postsListRef}
             data={posts}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={7}
+            removeClippedSubviews={true}
+            keyExtractor={(item) => String(item.id)}
             renderItem={renderPost}
-            keyExtractor={(item) => item.id.toString()}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.feedContent}
+            ListHeaderComponent={renderPostsHeader}
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
+            onScrollToIndexFailed={(info) => {
+              // Fallback for variable-height rows (mobile)
+              postsListRef.current?.scrollToOffset({
+                offset: info.averageItemLength * info.index,
+                animated: true,
+              });
+              setTimeout(() => {
+                postsListRef.current?.scrollToIndex({
+                  index: info.index,
+                  animated: true,
+                  viewPosition: 0,
+                });
+              }, 250);
+            }}
+            onEndReached={loadMorePosts}
+            onEndReachedThreshold={0.5}
             refreshing={refreshing}
             onRefresh={onRefresh}
+            ListFooterComponent={
+              loadingMore ? <ActivityIndicator size="small" /> : null
+            }
             ListEmptyComponent={
-              <Text style={styles.emptyText}>
-                No posts yet. Be the first to share!
-              </Text>
+              !loading ? (
+                <Text style={styles.emptyText}> No posts yet </Text>
+              ) : null
             }
           />
         </>
@@ -481,7 +897,7 @@ export default function HomeScreen() {
                 >
                   <Ionicons name="chevron-down" size={22} color="#111827" />
                 </TouchableOpacity>
-                <Text style={styles.commentsTitle}>Comments</Text>
+                <Text style={styles.commentsTitle}> Comments </Text>
               </View>
               <Text style={styles.commentsCountText}>
                 {activeComments.length}{" "}
@@ -520,13 +936,13 @@ export default function HomeScreen() {
                     <Ionicons name="person-circle" size={28} color="#9CA3AF" />
                   </View>
                   <View style={styles.commentBubbleContainer}>
-                    <Text style={styles.commentText}>{item.text}</Text>
+                    <Text style={styles.commentText}> {item.text} </Text>
                   </View>
                 </View>
               )}
               ListEmptyComponent={
                 <Text style={styles.commentsEmptyText}>
-                  No comments yet. Start the conversation.
+                  No comments yet.Start the conversation.
                 </Text>
               }
             />
@@ -654,6 +1070,7 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     marginRight: 10,
   },
+  // Note: Using Avatar component instead of Image for inputProfile
   postInput: {
     flex: 1,
     fontSize: 14,
@@ -712,28 +1129,28 @@ const styles = StyleSheet.create({
   eventCard: {
     flex: 1,
     backgroundColor: "#fff",
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    marginRight: 8,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    marginRight: 6,
     alignItems: "center",
   },
   eventIconWrapper: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+    marginBottom: 5,
   },
   eventLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: "#111827",
     textAlign: "center",
   },
   eventDate: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#6B7280",
     marginTop: 2,
   },
@@ -760,6 +1177,71 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: "#fff",
+  },
+
+  // RECOMMENDED
+  recommendedSection: {
+    marginBottom: 10,
+  },
+  recommendedHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  recommendedHeaderTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  recommendedHeaderLink: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  recommendedListContent: {
+    paddingRight: 6,
+  },
+  recommendedCard: {
+    width: 190,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 10,
+    marginRight: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  recommendedImage: {
+    width: "100%",
+    height: 96,
+    borderRadius: 12,
+    backgroundColor: "#E5E7EB",
+  },
+  recommendedImagePlaceholder: {
+    width: "100%",
+    height: 96,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recommendedTitle: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  recommendedMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  recommendedErrorText: {
+    fontSize: 12,
+    color: "#EF4444",
+    marginBottom: 6,
   },
 
   // FEED
@@ -791,6 +1273,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 5,
     elevation: 2,
+  },
+  postHighlightOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#007AFF",
+    borderRadius: 16,
   },
   postHeader: {
     flexDirection: "row",

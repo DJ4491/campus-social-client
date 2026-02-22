@@ -1,7 +1,7 @@
-import React from "react";
-import { TouchableOpacity, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "../styles/theme";
+import React from "react";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { COLORS } from "../src/styles/theme";
 
 export default function FloatingActionButton({ onPress }) {
   return (

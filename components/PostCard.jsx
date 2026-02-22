@@ -1,5 +1,5 @@
 import { Image, StyleSheet, Text, View } from "react-native";
-import { COLORS, SPACING } from "../styles/theme";
+import { COLORS, SPACING } from "../src/styles/theme";
 import Avatar from "./Avatar";
 
 export default function PostCard({ post }) {

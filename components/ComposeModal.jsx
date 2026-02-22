@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Modal, View, StyleSheet, TextInput, Button } from "react-native";
-import { SPACING, COLORS } from "../styles/theme";
+import { Button, Modal, StyleSheet, TextInput, View } from "react-native";
+import { COLORS, SPACING } from "../src/styles/theme";
 
 export default function ComposeModal({ visible, onClose, onPost }) {
   const [text, setText] = useState("");
